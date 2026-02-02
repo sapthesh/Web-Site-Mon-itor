@@ -20,13 +20,12 @@ jobs:
           RUN_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           
           # --- CONFIGURATION ---
-          QUIET_MODE: "false"      # Set "true" to ONLY notify on errors (no 30-min spam)
-          MAX_LATENCY: 2000        # Alert if slower than 2s
-          MIN_SIZE: 200            # Alert if page < 200 bytes
+          QUIET_MODE: "false"      
+          MAX_LATENCY: 2000        
+          MIN_SIZE: 200            
           USER_AGENT: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         run: |
-          # 1. RUNNER HEALTH CHECK (Prevent False Alarms)
-          # If the GitHub runner itself has no internet, we exit quietly.
+          # 1. RUNNER HEALTH CHECK
           if ! curl -s --head  --request GET "https://1.1.1.1" --connect-timeout 5 > /dev/null; then
              echo "⚠️ GitHub Runner has no internet. Skipping checks."
              exit 0
@@ -39,8 +38,8 @@ jobs:
 
           TG_REPORT="🔍 *Website Monitor Report* %0A%0A"
           
-          # Extract URLS from Secrets
-          URLS=$(echo '$SECRETS_JSON' | jq -r 'to_entries[] | select(.key | startswith("SITE_")) | "\(.key)|\(.value)"')
+          # --- FIX: Use double quotes here so the variable expands correctly ---
+          URLS=$(echo "$SECRETS_JSON" | jq -r 'to_entries[] | select(.key | startswith("SITE_")) | "\(.key)|\(.value)"')
           
           while IFS="|" read -r NAME URL; do
             NICKNAME=${NAME#SITE_}
@@ -83,7 +82,6 @@ jobs:
                 DAYS_LEFT=$(( ($EXP_S - $NOW_S) / 86400 ))
                 if [ "$DAYS_LEFT" -lt 14 ]; then
                    SSL_ICON="⚠️"
-                   # Always alert on SSL expiry
                    curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
                      -d chat_id="${TG_CHAT_ID}" -d parse_mode="Markdown" \
                      -d text="🔒 *SSL WARNING:* ${NICKNAME} expires in ${DAYS_LEFT} days!"
@@ -104,7 +102,6 @@ jobs:
               [ "$FINAL_SIZE" -le "$MIN_SIZE" ] && ERR="Blank/Broken (Size: ${FINAL_SIZE}b)" || ERR="HTTP $FINAL_CODE"
               echo "| $NICKNAME | $STATUS | - | ${FINAL_SIZE}b | $SSL_ICON |" >> $GITHUB_STEP_SUMMARY
               
-              # CRITICAL ALERT (Always sent)
               ALERT_MSG="🚨 *CRITICAL ALERT* %0A%0A*${NICKNAME}* failed! %0AReason: ${ERR} %0A%0A [View Logs](${RUN_URL})"
               curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
                 -d chat_id="${TG_CHAT_ID}" -d parse_mode="Markdown" -d text="${ALERT_MSG}"
@@ -112,8 +109,5 @@ jobs:
             
           done <<< "$URLS"
 
-          # Send Summary Report (Only if Quiet Mode is FALSE)
           if [ "$QUIET_MODE" = "false" ]; then
-            curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
-              -d chat_id="${TG_CHAT_ID}" -d parse_mode="Markdown" -d text="${TG_REPORT}"
-          fi
+            curl -s -X POST "https://api.telegram.
